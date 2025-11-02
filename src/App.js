@@ -41,10 +41,11 @@ export default function PhotoFrameSite() {
     handleFiles(e.dataTransfer.files)
   }
 
-  // ✅ 白枠付き画像の描画（タイムアウト付き・確実にresolve）
+  // ✅ 白枠付き画像の描画（Offscreen対応・確実に動作）
 const drawToBlob = (img) => {
   return new Promise((resolve) => {
-    const canvas = canvasRef.current
+    // 💡 DOMのcanvasではなく、新しいCanvasを生成する
+    const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     const size = outputSize
     canvas.width = size
@@ -90,6 +91,7 @@ const drawToBlob = (img) => {
     )
   })
 }
+
 
 
   // ✅ 画像1枚 → 自動DL
