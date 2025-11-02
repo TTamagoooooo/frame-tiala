@@ -41,32 +41,55 @@ export default function PhotoFrameSite() {
     handleFiles(e.dataTransfer.files)
   }
 
-  // ✅ 白枠付き画像の描画（Blobを返す）
-  const drawToBlob = (img) => {
-    return new Promise((resolve) => {
-      const canvas = canvasRef.current
-      const ctx = canvas.getContext('2d')
-      const size = outputSize
-      canvas.width = size
-      canvas.height = size
+  // ✅ 白枠付き画像の描画（Blobを返す・確実にresolveされる版）
+const drawToBlob = (img) => {
+  return new Promise((resolve) => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    const size = outputSize
+    canvas.width = size
+    canvas.height = size
 
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, size, size)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, size, size)
 
-      const border = Math.round((framePct / 100) * size)
-      const innerSize = size - border * 2
-      const scale = Math.min(innerSize / img.width, innerSize / img.height)
-      const w = img.width * scale
-      const h = img.height * scale
-      const x = border + (innerSize - w) / 2
-      const y = border + (innerSize - h) / 2
+    const border = Math.round((framePct / 100) * size)
+    const innerSize = size - border * 2
+    const scale = Math.min(innerSize / img.width, innerSize / img.height)
+    const w = img.width * scale
+    const h = img.height * scale
+    const x = border + (innerSize - w) / 2
+    const y = border + (innerSize - h) / 2
 
-      ctx.drawImage(img, x, y, w, h)
+    ctx.drawImage(img, x, y, w, h)
 
-      const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png'
-      canvas.toBlob(resolve, mime, 0.95)
-    })
-  }
+    const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png'
+    try {
+      // 明示的なフォールバック対応
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            console.warn('⚠️ Blob creation failed, retrying with toDataURL fallback')
+            const dataURL = canvas.toDataURL(mime)
+            const byteString = atob(dataURL.split(',')[1])
+            const ab = new ArrayBuffer(byteString.length)
+            const ia = new Uint8Array(ab)
+            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
+            resolve(new Blob([ab], { type: mime }))
+          } else {
+            resolve(blob)
+          }
+        },
+        mime,
+        0.95
+      )
+    } catch (e) {
+      console.error('❌ drawToBlob error:', e)
+      resolve(null)
+    }
+  })
+}
+
 
   // ✅ 画像1枚 → 自動DL
   const downloadSingle = async (fileName, img) => {
