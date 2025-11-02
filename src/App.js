@@ -104,28 +104,41 @@ const drawToBlob = (img) => {
     URL.revokeObjectURL(url)
   }
 
- /// ✅ 複数画像 → ZIP化（ローディングつき・強制完了保証）
+
+  // ✅ 複数画像 → ZIP化（ローディングつき・デバッグログ入り）
 const downloadZip = async (imageList) => {
   setLoading(true)
   const zip = new JSZip()
 
   try {
-    const blobs = await Promise.all(
-      imageList.map(async ({ file, image }) => {
-        const blob = await drawToBlob(image)
-        const ext = format === 'jpeg' ? 'jpg' : 'png'
-        zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
-      })
-    )
+    console.log('🧩 ZIP開始, 画像枚数:', imageList.length)
 
+    for (const { file, image } of imageList) {
+      console.log('→ draw start:', file.name)
+      const blob = await drawToBlob(image)
+      console.log('✅ draw完了:', file.name, blob ? 'ok' : 'null')
+
+      if (!blob) {
+        console.warn('⚠️ blobがnullでした、スキップします')
+        continue
+      }
+
+      const ext = format === 'jpeg' ? 'jpg' : 'png'
+      zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
+    }
+
+    console.log('🧩 zip.generateAsync 開始')
     const content = await zip.generateAsync({ type: 'blob' })
+    console.log('✅ zip生成完了！')
     saveAs(content, 'framed-images.zip')
   } catch (err) {
     console.error('❌ ZIP生成中にエラー:', err)
   } finally {
+    console.log('🧩 setLoading(false)')
     setLoading(false)
   }
 }
+
 
 
   // ✅ 自動ダウンロード処理
