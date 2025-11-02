@@ -1,43 +1,37 @@
 import React, { useRef, useState, useEffect } from 'react'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 
 // PhotoFrameSite — React + Tailwind
-// 画像をアップロードすると正方形の白枠を自動で付けてプレビュー＆ダウンロードできるツール。
+// 単一選択 → 白枠画像を自動ダウンロード
+// 複数選択 → ZIPにまとめて自動ダウンロード（ローディング付き）
 
 export default function PhotoFrameSite() {
   const canvasRef = useRef(null)
-  const [fileName, setFileName] = useState('')
-  const [image, setImage] = useState(null)
+  const [images, setImages] = useState([])
   const [framePct, setFramePct] = useState(8)
   const [outputSize, setOutputSize] = useState(2000)
   const [format, setFormat] = useState('jpeg')
   const [dragging, setDragging] = useState(false)
-
-  // ✅ 画像変更時に自動プレビュー＆自動ダウンロード
-  useEffect(() => {
-    if (!image) return
-
-    const timer = setTimeout(() => {
-      draw()
-      setTimeout(() => {
-        downloadImage()
-      }, 300)
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [image])
+  const [loading, setLoading] = useState(false) // 🧵 ローディング状態
 
   // ✅ ファイル選択時
   const handleFiles = (files) => {
     if (!files || !files.length) return
-    const f = files[0]
-    setFileName(f.name)
-    const url = URL.createObjectURL(f)
-    const img = new Image()
-    img.onload = () => {
-      setImage(img)
-      URL.revokeObjectURL(url)
-    }
-    img.src = url
+
+    const imgs = []
+    Array.from(files).forEach((f) => {
+      const url = URL.createObjectURL(f)
+      const img = new Image()
+      img.onload = () => {
+        imgs.push({ file: f, image: img })
+        if (imgs.length === files.length) {
+          setImages(imgs)
+        }
+        URL.revokeObjectURL(url)
+      }
+      img.src = url
+    })
   }
 
   // ✅ ドラッグ&ドロップ処理
@@ -47,53 +41,85 @@ export default function PhotoFrameSite() {
     handleFiles(e.dataTransfer.files)
   }
 
-  // ✅ 描画処理
-  const draw = () => {
-    const canvas = canvasRef.current
-    if (!canvas || !image) return
+  // ✅ 白枠付き画像の描画（Blobを返す）
+  const drawToBlob = (img) => {
+    return new Promise((resolve) => {
+      const canvas = canvasRef.current
+      const ctx = canvas.getContext('2d')
+      const size = outputSize
+      canvas.width = size
+      canvas.height = size
 
-    const ctx = canvas.getContext('2d')
-    const size = outputSize
-    canvas.width = size
-    canvas.height = size
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, size, size)
 
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, size, size)
+      const border = Math.round((framePct / 100) * size)
+      const innerSize = size - border * 2
+      const scale = Math.min(innerSize / img.width, innerSize / img.height)
+      const w = img.width * scale
+      const h = img.height * scale
+      const x = border + (innerSize - w) / 2
+      const y = border + (innerSize - h) / 2
 
-    const border = Math.round((framePct / 100) * size)
-    const innerSize = size - border * 2
+      ctx.drawImage(img, x, y, w, h)
 
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(border, border, innerSize, innerSize)
-
-    const scale = Math.min(innerSize / image.width, innerSize / image.height)
-    const w = image.width * scale
-    const h = image.height * scale
-    const x = border + (innerSize - w) / 2
-    const y = border + (innerSize - h) / 2
-
-    ctx.drawImage(image, x, y, w, h)
+      const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png'
+      canvas.toBlob(resolve, mime, 0.95)
+    })
   }
 
-  // ✅ ダウンロード処理
-  const downloadImage = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png'
+  // ✅ 画像1枚 → 自動DL
+  const downloadSingle = async (fileName, img) => {
+    const blob = await drawToBlob(img)
     const ext = format === 'jpeg' ? 'jpg' : 'png'
-    canvas.toBlob((blob) => {
-      const a = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      a.href = url
-      a.download = (fileName ? fileName.replace(/\.[^/.]+$/, '') : 'framed-image') + `.${ext}`
-      a.click()
-      URL.revokeObjectURL(url)
-    }, mime)
+    const a = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    a.href = url
+    a.download = (fileName.replace(/\.[^/.]+$/, '') || 'framed-image') + `.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
-  // ✅ 表示部
+  // ✅ 複数画像 → ZIP化（ローディングつき）
+  const downloadZip = async (imageList) => {
+    setLoading(true) // ← 開始
+    const zip = new JSZip()
+    for (const { file, image } of imageList) {
+      const blob = await drawToBlob(image)
+      const ext = format === 'jpeg' ? 'jpg' : 'png'
+      zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
+    }
+    const content = await zip.generateAsync({ type: 'blob' })
+    saveAs(content, 'framed-images.zip')
+    setLoading(false) // ← 終了
+  }
+
+  // ✅ 自動ダウンロード処理
+  useEffect(() => {
+    if (images.length === 0) return
+
+    const timer = setTimeout(async () => {
+      if (images.length === 1) {
+        await downloadSingle(images[0].file.name, images[0].image)
+      } else {
+        await downloadZip(images)
+      }
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [images])
+
+  // ✅ UI部
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center py-12 px-4">
+    <div className="relative min-h-screen bg-gray-50 flex flex-col items-center justify-center py-12 px-4">
+      {/* 🌸 ローディングオーバーレイ */}
+      {loading && (
+        <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center z-50 transition">
+          <div className="w-8 h-8 border-4 border-gray-300 border-t-gray-800 rounded-full animate-spin mb-3"></div>
+          <p className="text-sm text-gray-600 animate-pulse">包んでいます…</p>
+        </div>
+      )}
+
       <h1 className="text-2xl font-semibold mb-8 text-gray-800">写真に白いフレームを付けるサイト</h1>
 
       <div
@@ -101,16 +127,18 @@ export default function PhotoFrameSite() {
         onDragOver={(e) => e.preventDefault()}
         onDragEnter={() => setDragging(true)}
         onDragLeave={() => setDragging(false)}
-        className={`w-full max-w-4xl p-8 border-2 ${dragging ? 'border-gray-400 bg-white' : 'border-gray-200 bg-white/70'} border-dashed rounded-xl flex flex-col md:flex-row gap-8 items-center`}
+        className={`w-full max-w-4xl p-8 border-2 ${
+          dragging ? 'border-gray-400 bg-white' : 'border-gray-200 bg-white/70'
+        } border-dashed rounded-xl flex flex-col md:flex-row gap-8 items-center`}
       >
         <div className="flex-1 w-full">
-          <p className="text-sm text-gray-600">画像をドラッグ＆ドロップ、またはファイルを選択してください。</p>
+          <p className="text-sm text-gray-600">画像をドラッグ＆ドロップ、または複数選択してください。</p>
           <div className="mt-4 flex gap-3">
             <label className="cursor-pointer bg-gray-100 px-4 py-2 rounded text-sm hover:bg-gray-200">
               ファイルを選ぶ
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+              <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFiles(e.target.files)} />
             </label>
-            <button onClick={() => { setImage(null); setFileName('') }} className="text-sm px-4 py-2 border rounded bg-white hover:bg-gray-50">消去</button>
+            <button onClick={() => setImages([])} className="text-sm px-4 py-2 border rounded bg-white hover:bg-gray-50">消去</button>
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
@@ -133,14 +161,6 @@ export default function PhotoFrameSite() {
                 <label><input type="radio" checked={format === 'jpeg'} onChange={() => setFormat('jpeg')} /> JPEG</label>
               </div>
             </label>
-
-            <div>
-              <p className="mb-2">操作:</p>
-              <div className="flex gap-2">
-                <button onClick={draw} className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800">プレビュー更新</button>
-                <button onClick={downloadImage} disabled={!image} className="px-4 py-2 bg-white border rounded hover:bg-gray-50">ダウンロード</button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -148,14 +168,15 @@ export default function PhotoFrameSite() {
           <div className="bg-white p-3 rounded shadow-sm">
             <p className="text-xs text-gray-500 mb-2">プレビュー</p>
             <div className="w-full h-80 flex items-center justify-center">
-              {image ? (
+              {images.length === 1 ? (
                 <canvas ref={canvasRef} className="w-full h-full object-contain" />
+              ) : images.length > 1 ? (
+                <p className="text-gray-400 text-center">複数画像を処理中です…</p>
               ) : (
                 <p className="text-gray-400 text-center">ここにプレビューが表示されます</p>
               )}
             </div>
           </div>
-          <p className="mt-3 text-xs text-gray-500">アップロード後にプレビューを確認し、白枠付き画像を保存できます。</p>
         </div>
       </div>
 
