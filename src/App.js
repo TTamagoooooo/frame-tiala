@@ -41,7 +41,7 @@ export default function PhotoFrameSite() {
     handleFiles(e.dataTransfer.files)
   }
 
-  // ✅ 白枠付き画像の描画（Blobを返す・確実にresolveされる版）
+  // ✅ 白枠付き画像の描画（タイムアウト付き・確実にresolve）
 const drawToBlob = (img) => {
   return new Promise((resolve) => {
     const canvas = canvasRef.current
@@ -64,29 +64,30 @@ const drawToBlob = (img) => {
     ctx.drawImage(img, x, y, w, h)
 
     const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png'
-    try {
-      // 明示的なフォールバック対応
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            console.warn('⚠️ Blob creation failed, retrying with toDataURL fallback')
-            const dataURL = canvas.toDataURL(mime)
-            const byteString = atob(dataURL.split(',')[1])
-            const ab = new ArrayBuffer(byteString.length)
-            const ia = new Uint8Array(ab)
-            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i)
-            resolve(new Blob([ab], { type: mime }))
-          } else {
-            resolve(blob)
-          }
-        },
-        mime,
-        0.95
-      )
-    } catch (e) {
-      console.error('❌ drawToBlob error:', e)
-      resolve(null)
-    }
+    let resolved = false
+
+    // ⏳ タイムアウト：10秒経ったら強制resolve
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        console.warn('⚠️ Timeout reached, forcing blob resolve')
+        const fallback = canvas.toDataURL(mime)
+        fetch(fallback)
+          .then((res) => res.blob())
+          .then(resolve)
+      }
+    }, 10000)
+
+    canvas.toBlob(
+      (blob) => {
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timer)
+          resolve(blob)
+        }
+      },
+      mime,
+      0.95
+    )
   })
 }
 
@@ -103,26 +104,29 @@ const drawToBlob = (img) => {
     URL.revokeObjectURL(url)
   }
 
- // ✅ 複数画像 → ZIP化（ローディングつき）
+ /// ✅ 複数画像 → ZIP化（ローディングつき・強制完了保証）
 const downloadZip = async (imageList) => {
-  setLoading(true) // ← 開始
+  setLoading(true)
   const zip = new JSZip()
 
-  // 🧠 全画像のBlob化をPromise.allで並列処理
-  const results = await Promise.all(
-    imageList.map(async ({ file, image }) => {
-      const blob = await drawToBlob(image)
-      const ext = format === 'jpeg' ? 'jpg' : 'png'
-      zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
-    })
-  )
+  try {
+    const blobs = await Promise.all(
+      imageList.map(async ({ file, image }) => {
+        const blob = await drawToBlob(image)
+        const ext = format === 'jpeg' ? 'jpg' : 'png'
+        zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
+      })
+    )
 
-  // ZIPを生成
-  const content = await zip.generateAsync({ type: 'blob' })
-  saveAs(content, 'framed-images.zip')
-
-  setLoading(false) // ← 終了
+    const content = await zip.generateAsync({ type: 'blob' })
+    saveAs(content, 'framed-images.zip')
+  } catch (err) {
+    console.error('❌ ZIP生成中にエラー:', err)
+  } finally {
+    setLoading(false)
+  }
 }
+
 
   // ✅ 自動ダウンロード処理
   useEffect(() => {
