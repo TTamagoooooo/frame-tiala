@@ -135,23 +135,22 @@ export default function PhotoFrameSite() {
           <p className="text-sm text-gray-600">画像をドラッグ＆ドロップ、または複数選択してください。</p>
           <div className="mt-4 flex gap-3 items-center">
   {/* 🧷 ファイル選択ボタン */}
-  <div className="flex items-center gap-2">
-    <label
-      htmlFor="fileInput"
-      className="cursor-pointer bg-gray-100 px-4 py-2 rounded text-sm hover:bg-gray-200"
-    >
-      ファイルを選ぶ
-    </label>
-    <input
-      id="fileInput"
-      type="file"
-      accept="image/*"
-      multiple
-      onClick={(e) => (e.target.value = null)} // ← これを追加！
-      className="hidden"
-      onChange={(e) => handleFiles(e.target.files)}
-    />
-  </div>
+  <button
+    onClick={() => document.getElementById('fileInput').click()}
+    className="bg-gray-100 px-4 py-2 rounded text-sm hover:bg-gray-200"
+  >
+    ファイルを選ぶ
+  </button>
+
+  <input
+    id="fileInput"
+    type="file"
+    accept="image/*"
+    multiple
+    onClick={(e) => (e.target.value = null)}
+    style={{ display: 'none' }}
+    onChange={(e) => handleFiles(e.target.files)}
+  />
 
   {/* ❌ 消去ボタン */}
   <button
@@ -161,6 +160,7 @@ export default function PhotoFrameSite() {
     消去
   </button>
 </div>
+
           <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
             <label>フレーム厚さ (%):
               <input type="range" min="2" max="20" value={framePct} onChange={(e) => setFramePct(Number(e.target.value))} className="w-full" />
