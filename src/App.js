@@ -133,7 +133,7 @@ export default function PhotoFrameSite() {
       >
         <div className="flex-1 w-full">
           <p className="text-sm text-gray-600">画像をドラッグ＆ドロップ、または複数選択してください。</p>
-         <div className="mt-4 flex gap-3 items-center">
+          <div className="mt-4 flex gap-3 items-center">
   {/* 🧷 ファイル選択ボタン */}
   <div className="flex items-center gap-2">
     <label
@@ -147,6 +147,7 @@ export default function PhotoFrameSite() {
       type="file"
       accept="image/*"
       multiple
+      onClick={(e) => (e.target.value = null)} // ← これを追加！
       className="hidden"
       onChange={(e) => handleFiles(e.target.files)}
     />
@@ -160,8 +161,6 @@ export default function PhotoFrameSite() {
     消去
   </button>
 </div>
-
-
           <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
             <label>フレーム厚さ (%):
               <input type="range" min="2" max="20" value={framePct} onChange={(e) => setFramePct(Number(e.target.value))} className="w-full" />
