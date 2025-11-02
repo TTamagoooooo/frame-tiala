@@ -80,19 +80,26 @@ export default function PhotoFrameSite() {
     URL.revokeObjectURL(url)
   }
 
-  // ✅ 複数画像 → ZIP化（ローディングつき）
-  const downloadZip = async (imageList) => {
-    setLoading(true) // ← 開始
-    const zip = new JSZip()
-    for (const { file, image } of imageList) {
+ // ✅ 複数画像 → ZIP化（ローディングつき）
+const downloadZip = async (imageList) => {
+  setLoading(true) // ← 開始
+  const zip = new JSZip()
+
+  // 🧠 全画像のBlob化をPromise.allで並列処理
+  const results = await Promise.all(
+    imageList.map(async ({ file, image }) => {
       const blob = await drawToBlob(image)
       const ext = format === 'jpeg' ? 'jpg' : 'png'
       zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
-    }
-    const content = await zip.generateAsync({ type: 'blob' })
-    saveAs(content, 'framed-images.zip')
-    setLoading(false) // ← 終了
-  }
+    })
+  )
+
+  // ZIPを生成
+  const content = await zip.generateAsync({ type: 'blob' })
+  saveAs(content, 'framed-images.zip')
+
+  setLoading(false) // ← 終了
+}
 
   // ✅ 自動ダウンロード処理
   useEffect(() => {
