@@ -136,7 +136,14 @@ export default function PhotoFrameSite() {
           <div className="mt-4 flex gap-3">
             <label className="cursor-pointer bg-gray-100 px-4 py-2 rounded text-sm hover:bg-gray-200">
               ファイルを選ぶ
-              <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+              <input
+  type="file"
+  accept="image/*"
+  multiple
+  className="hidden"
+  onChange={(e) => handleFiles(e.target.files)}
+/>
+
             </label>
             <button onClick={() => setImages([])} className="text-sm px-4 py-2 border rounded bg-white hover:bg-gray-50">消去</button>
           </div>
