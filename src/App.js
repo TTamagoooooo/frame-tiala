@@ -2,6 +2,13 @@ import React, { useRef, useState, useEffect } from 'react'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 
+// ✅ ランダムファイル名生成（ここ！！！）
+const generateRandomFileName = (ext) => {
+  const timestamp = Date.now()
+  const random = crypto.getRandomValues(new Uint32Array(1))[0].toString(16)
+  return `tiala_${timestamp}_${random}.${ext}`
+}
+
 // PhotoFrameSite — React + Tailwind
 // 単一選択 → 白枠画像を自動ダウンロード
 // 複数選択 → ZIPにまとめて自動ダウンロード（ローディング付き）
@@ -106,16 +113,18 @@ const y = border + (innerSize - h) / 2 + dy
   }
 
   // ✅ 画像1枚 → 自動DL
-  const downloadSingle = async (fileName, img) => {
-    const blob = await drawToBlob(img)
-    const ext = format === 'jpeg' ? 'jpg' : 'png'
-    const a = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    a.href = url
-    a.download = (fileName.replace(/\.[^/.]+$/, '') || 'framed-image') + `.${ext}`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+ const downloadSingle = async (_, img) => {
+  const blob = await drawToBlob(img)
+  const ext = format === 'jpeg' ? 'jpg' : 'png'
+  const a = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+
+  a.href = url
+  a.download = generateRandomFileName(ext)
+
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
   // ✅ 複数画像 → ZIP化（ローディングつき）
   const downloadZip = async (imageList) => {
@@ -126,7 +135,7 @@ const y = border + (innerSize - h) / 2 + dy
         const blob = await drawToBlob(image)
         if (!blob) continue
         const ext = format === 'jpeg' ? 'jpg' : 'png'
-        zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
+        zip.file(generateRandomFileName(ext), blob)
       }
       const content = await zip.generateAsync({ type: 'blob' })
       saveAs(content, 'framed-images.zip')
@@ -239,6 +248,8 @@ const y = border + (innerSize - h) / 2 + dy
                 onChange={(e) => setFramePct(Number(e.target.value))}
                 className="w-full mt-2"
               />
+
+              
             </label>
 
             <label className="col-span-2">
