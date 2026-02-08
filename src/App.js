@@ -14,12 +14,24 @@ const FRAME_PRESETS = [
   { label: "XL", pct: 16 },
 ]
 
+const POSITION_PRESETS = [
+  { label: "中央", x: 0, y: 0 },
+  { label: "上寄せ", x: 0, y: -100 },
+  { label: "下寄せ", x: 0, y: 100 },
+  { label: "左寄せ", x: -100, y: 0 },
+  { label: "右寄せ", x: 100, y: 0 },
+]
+
+
+
 export default function PhotoFrameSite() {
   const canvasRef = useRef(null)
   const [images, setImages] = useState([])
   const [framePct, setFramePct] = useState(8)
   const [outputSize, setOutputSize] = useState(2000)
   const [format, setFormat] = useState('jpeg')
+  const [offsetX, setOffsetX] = useState(0)
+  const [offsetY, setOffsetY] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false) // 🧵 ローディング状態
 
@@ -64,8 +76,12 @@ export default function PhotoFrameSite() {
     const scale = Math.min(innerSize / img.width, innerSize / img.height)
     const w = img.width * scale
     const h = img.height * scale
-    const x = border + (innerSize - w) / 2
-    const y = border + (innerSize - h) / 2
+    const dx = ((innerSize - w) / 2) * (offsetX / 100)
+const dy = ((innerSize - h) / 2) * (offsetY / 100)
+
+const x = border + (innerSize - w) / 2 + dx
+const y = border + (innerSize - h) / 2 + dy
+
 
     ctx.drawImage(img, x, y, w, h)
   }
@@ -137,10 +153,10 @@ export default function PhotoFrameSite() {
 
   // ✅ プレビュー更新（テンプレ/スライダー/サイズ/フォーマット変更で反映）
   useEffect(() => {
-    if (images.length !== 1) return
-    drawPreview(images[0].image)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [images, framePct, outputSize, format])
+  if (images.length !== 1) return
+  drawPreview(images[0].image)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [images, framePct, outputSize, format, offsetX, offsetY])
 
   // ✅ UI部
   return (
@@ -224,6 +240,31 @@ export default function PhotoFrameSite() {
                 className="w-full mt-2"
               />
             </label>
+
+            <label className="col-span-2">
+  配置テンプレ
+  <div className="mt-2 flex flex-wrap gap-2">
+    {POSITION_PRESETS.map(p => (
+      <button
+        key={p.label}
+        type="button"
+        onClick={() => {
+          setOffsetX(p.x)
+          setOffsetY(p.y)
+        }}
+        className={[
+          "px-3 py-1 rounded-full text-xs border transition",
+          offsetX === p.x && offsetY === p.y
+            ? "bg-gray-900 text-white border-gray-900"
+            : "bg-white hover:bg-gray-50 border-gray-200 text-gray-700"
+        ].join(" ")}
+      >
+        {p.label}
+      </button>
+    ))}
+  </div>
+</label>
+
 
             <label>出力サイズ (px):
               <select value={outputSize} onChange={(e) => setOutputSize(Number(e.target.value))} className="w-full p-2 border rounded">
