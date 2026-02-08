@@ -121,6 +121,8 @@ const y = border + (innerSize - h) / 2 + dy
 
   a.href = url
   a.download = generateRandomFileName(ext)
+console.log("DOWNLOAD NAME:", a.download)
+
 
   a.click()
   URL.revokeObjectURL(url)
