@@ -139,7 +139,7 @@ const y = border + (innerSize - h) / 2 + dy
         zip.file(generateRandomFileName(ext), blob)
       }
       const content = await zip.generateAsync({ type: 'blob' })
-      saveAs(content, 'framed-images.zip')
+      saveAs(content, generateRandomFileName('zip'))
     } finally {
       setLoading(false)
     }
