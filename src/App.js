@@ -6,6 +6,14 @@ import { saveAs } from 'file-saver'
 // 単一選択 → 白枠画像を自動ダウンロード
 // 複数選択 → ZIPにまとめて自動ダウンロード（ローディング付き）
 
+const FRAME_PRESETS = [
+  { label: "XS", pct: 3 },
+  { label: "S",  pct: 5 },
+  { label: "M",  pct: 8 },
+  { label: "L",  pct: 12 },
+  { label: "XL", pct: 16 },
+]
+
 export default function PhotoFrameSite() {
   const canvasRef = useRef(null)
   const [images, setImages] = useState([])
@@ -41,11 +49,8 @@ export default function PhotoFrameSite() {
     handleFiles(e.dataTransfer.files)
   }
 
-  // ✅ 白枠付き画像の描画（Offscreen対応・確実に動作）
-const drawToBlob = (img) => {
-  return new Promise((resolve) => {
-    // 💡 DOMのcanvasではなく、新しいCanvasを生成する
-    const canvas = document.createElement('canvas')
+  // ✅ 共通：白枠合成を「指定canvas」に描く
+  const drawFrameToCanvas = (canvas, img) => {
     const ctx = canvas.getContext('2d')
     const size = outputSize
     canvas.width = size
@@ -63,36 +68,26 @@ const drawToBlob = (img) => {
     const y = border + (innerSize - h) / 2
 
     ctx.drawImage(img, x, y, w, h)
+  }
 
-    const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png'
-    let resolved = false
+  // ✅ 白枠付き画像の描画（Blobを返す：ZIP/単体DL用）
+  const drawToBlob = (img) => {
+    return new Promise((resolve) => {
+      // ZIPの安定性優先：毎回新しいcanvasで生成
+      const canvas = document.createElement('canvas')
+      drawFrameToCanvas(canvas, img)
 
-    // ⏳ タイムアウト：10秒経ったら強制resolve
-    const timer = setTimeout(() => {
-      if (!resolved) {
-        console.warn('⚠️ Timeout reached, forcing blob resolve')
-        const fallback = canvas.toDataURL(mime)
-        fetch(fallback)
-          .then((res) => res.blob())
-          .then(resolve)
-      }
-    }, 10000)
+      const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png'
+      canvas.toBlob((blob) => resolve(blob), mime, 0.95)
+    })
+  }
 
-    canvas.toBlob(
-      (blob) => {
-        if (!resolved) {
-          resolved = true
-          clearTimeout(timer)
-          resolve(blob)
-        }
-      },
-      mime,
-      0.95
-    )
-  })
-}
-
-
+  // ✅ プレビュー描画（画面のcanvasRefへ）
+  const drawPreview = (img) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    drawFrameToCanvas(canvas, img)
+  }
 
   // ✅ 画像1枚 → 自動DL
   const downloadSingle = async (fileName, img) => {
@@ -106,44 +101,25 @@ const drawToBlob = (img) => {
     URL.revokeObjectURL(url)
   }
 
-
-  // ✅ 複数画像 → ZIP化（ローディングつき・デバッグログ入り）
-const downloadZip = async (imageList) => {
-  setLoading(true)
-  const zip = new JSZip()
-
-  try {
-    console.log('🧩 ZIP開始, 画像枚数:', imageList.length)
-
-    for (const { file, image } of imageList) {
-      console.log('→ draw start:', file.name)
-      const blob = await drawToBlob(image)
-      console.log('✅ draw完了:', file.name, blob ? 'ok' : 'null')
-
-      if (!blob) {
-        console.warn('⚠️ blobがnullでした、スキップします')
-        continue
+  // ✅ 複数画像 → ZIP化（ローディングつき）
+  const downloadZip = async (imageList) => {
+    setLoading(true)
+    try {
+      const zip = new JSZip()
+      for (const { file, image } of imageList) {
+        const blob = await drawToBlob(image)
+        if (!blob) continue
+        const ext = format === 'jpeg' ? 'jpg' : 'png'
+        zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
       }
-
-      const ext = format === 'jpeg' ? 'jpg' : 'png'
-      zip.file(file.name.replace(/\.[^/.]+$/, '') + `.${ext}`, blob)
+      const content = await zip.generateAsync({ type: 'blob' })
+      saveAs(content, 'framed-images.zip')
+    } finally {
+      setLoading(false)
     }
-
-    console.log('🧩 zip.generateAsync 開始')
-    const content = await zip.generateAsync({ type: 'blob' })
-    console.log('✅ zip生成完了！')
-    saveAs(content, 'framed-images.zip')
-  } catch (err) {
-    console.error('❌ ZIP生成中にエラー:', err)
-  } finally {
-    console.log('🧩 setLoading(false)')
-    setLoading(false)
   }
-}
 
-
-
-  // ✅ 自動ダウンロード処理
+  // ✅ 自動ダウンロード処理（imagesがセットされた時だけ）
   useEffect(() => {
     if (images.length === 0) return
 
@@ -156,7 +132,15 @@ const downloadZip = async (imageList) => {
     }, 400)
 
     return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [images])
+
+  // ✅ プレビュー更新（テンプレ/スライダー/サイズ/フォーマット変更で反映）
+  useEffect(() => {
+    if (images.length !== 1) return
+    drawPreview(images[0].image)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [images, framePct, outputSize, format])
 
   // ✅ UI部
   return (
@@ -182,37 +166,63 @@ const downloadZip = async (imageList) => {
       >
         <div className="flex-1 w-full">
           <p className="text-sm text-gray-600">画像をドラッグ＆ドロップ、または複数選択してください。</p>
+
           <div className="mt-4 flex gap-3 items-center">
-  {/* 🧷 ファイル選択ボタン */}
-  <button
-    onClick={() => document.getElementById('fileInput').click()}
-    className="bg-gray-100 px-4 py-2 rounded text-sm hover:bg-gray-200"
-  >
-    ファイルを選ぶ
-  </button>
+            <button
+              onClick={() => document.getElementById('fileInput').click()}
+              className="bg-gray-100 px-4 py-2 rounded text-sm hover:bg-gray-200"
+            >
+              ファイルを選ぶ
+            </button>
 
-  <input
-    id="fileInput"
-    type="file"
-    accept="image/*"
-    multiple
-    onClick={(e) => (e.target.value = null)}
-    style={{ display: 'none' }}
-    onChange={(e) => handleFiles(e.target.files)}
-  />
+            <input
+              id="fileInput"
+              type="file"
+              accept="image/*"
+              multiple
+              onClick={(e) => (e.target.value = null)} // 同じファイルを選び直せる
+              style={{ display: 'none' }}
+              onChange={(e) => handleFiles(e.target.files)}
+            />
 
-  {/* ❌ 消去ボタン */}
-  <button
-    onClick={() => setImages([])}
-    className="text-sm px-4 py-2 border rounded bg-white hover:bg-gray-50"
-  >
-    消去
-  </button>
-</div>
+            <button
+              onClick={() => setImages([])}
+              className="text-sm px-4 py-2 border rounded bg-white hover:bg-gray-50"
+            >
+              消去
+            </button>
+          </div>
 
           <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
             <label>フレーム厚さ (%):
-              <input type="range" min="2" max="20" value={framePct} onChange={(e) => setFramePct(Number(e.target.value))} className="w-full" />
+              <div className="mt-2 flex flex-wrap gap-2">
+                {FRAME_PRESETS.map(p => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => setFramePct(p.pct)}
+                    className={[
+                      "px-3 py-1 rounded-full text-xs border transition",
+                      framePct === p.pct
+                        ? "bg-gray-900 text-white border-gray-900"
+                        : "bg-white hover:bg-gray-50 border-gray-200 text-gray-700"
+                    ].join(" ")}
+                    aria-pressed={framePct === p.pct}
+                    title={`${p.pct}%`}
+                  >
+                    {p.label} <span className="opacity-70">{p.pct}%</span>
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="range"
+                min="2"
+                max="20"
+                value={framePct}
+                onChange={(e) => setFramePct(Number(e.target.value))}
+                className="w-full mt-2"
+              />
             </label>
 
             <label>出力サイズ (px):
